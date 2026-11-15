@@ -125,6 +125,16 @@ app.post("/api/formats", async (req, res) => {
   res.json({ formats: formatsList });
 });
 
+function runYtDlp(args) {
+  return new Promise((resolve) => {
+    const proc = spawn("yt-dlp", args);
+    let stderr = "";
+    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    proc.on("close", (code) => resolve({ code, stderr }));
+    proc.on("error", (err) => resolve({ code: 1, stderr: err.message }));
+  });
+}
+
 app.post("/api/download", async (req, res) => {
   const { url, videoId: bodyVideoId, quality = "720p" } = req.body || {};
   const videoId = bodyVideoId || (typeof url === "string" ? extractYouTubeId(url) : null);
@@ -137,78 +147,75 @@ app.post("/api/download", async (req, res) => {
   const isAudio = quality === "audio" || quality === "mp3" || quality === "m4a";
   const ext = isAudio ? "mp3" : "mp4";
   const tempFilePath = path.join(os.tmpdir(), `jas_${videoId}_${Date.now()}.${ext}`);
+  const heightNum = parseInt(quality, 10) || 720;
 
-  const args = [
-    "--no-playlist",
-    "--no-check-certificates",
-    "--extractor-args",
-    "youtube:player_client=android,ios,web",
-  ];
+  const formatArgs = isAudio
+    ? ["-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", tempFilePath]
+    : [
+        "-f",
+        `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]/best`,
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        tempFilePath,
+      ];
 
+  // ১ম চেষ্টা: কুকিজসহ রান করা
+  let result = { code: 1, stderr: "" };
   if (fs.existsSync(cookiePath)) {
-    args.push("--cookies", cookiePath);
+    result = await runYtDlp([
+      "--no-playlist",
+      "--no-check-certificates",
+      "--cookies",
+      cookiePath,
+      ...formatArgs,
+      targetUrl,
+    ]);
   }
 
-  if (isAudio) {
-    args.push("-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", tempFilePath);
-  } else {
-    const heightNum = parseInt(quality, 10) || 720;
-    args.push(
-      "-f",
-      `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]/best`,
-      "--merge-output-format",
-      "mp4",
-      "-o",
-      tempFilePath
-    );
+  // ২য় চেষ্টা (ফলব্যাক): কুকিজ কাজ না করলে tv_embedded ও android ক্লায়েন্ট দিয়ে কুকিজ ছাড়াই চেষ্টা করা
+  if (result.code !== 0 || !fs.existsSync(tempFilePath)) {
+    console.warn("Retrying without cookies using tv_embedded/android client...");
+    result = await runYtDlp([
+      "--no-playlist",
+      "--no-check-certificates",
+      "--extractor-args",
+      "youtube:player_client=tv_embedded,android",
+      ...formatArgs,
+      targetUrl,
+    ]);
   }
 
-  args.push(targetUrl);
+  if (result.code !== 0 || !fs.existsSync(tempFilePath)) {
+    console.error("yt-dlp final error:", result.stderr);
+    return res.status(500).json({
+      error: "YouTube blocked this server IP. Please try again later or use fresh cookies.",
+    });
+  }
 
-  const ytDlp = spawn("yt-dlp", args);
-  let stderrLog = "";
+  const stat = fs.statSync(tempFilePath);
+  if (stat.size === 0) {
+    fs.unlinkSync(tempFilePath);
+    return res.status(500).json({ error: "Generated file was empty." });
+  }
 
-  ytDlp.stderr.on("data", (err) => {
-    stderrLog += err.toString();
+  res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
+  res.setHeader("Content-Length", stat.size);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="youtube_${isAudio ? "audio" : `video_${quality}`}.${ext}"`
+  );
+
+  const readStream = fs.createReadStream(tempFilePath);
+  readStream.pipe(res);
+
+  readStream.on("close", () => {
+    fs.unlink(tempFilePath, () => {});
   });
 
-  ytDlp.on("close", (code) => {
-    if (code !== 0 || !fs.existsSync(tempFilePath)) {
-      console.error("yt-dlp error:", stderrLog);
-      if (!res.headersSent) {
-        return res.status(500).json({ error: "Failed to process media file. Please try again." });
-      }
-      return;
-    }
-
-    const stat = fs.statSync(tempFilePath);
-    if (stat.size === 0) {
-      fs.unlinkSync(tempFilePath);
-      return res.status(500).json({ error: "Generated file was empty." });
-    }
-
-    res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
-    res.setHeader("Content-Length", stat.size);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="youtube_${isAudio ? "audio" : `video_${quality}`}.${ext}"`
-    );
-
-    const readStream = fs.createReadStream(tempFilePath);
-    readStream.pipe(res);
-
-    readStream.on("close", () => {
-      fs.unlink(tempFilePath, () => {});
-    });
-
-    readStream.on("error", () => {
-      fs.unlink(tempFilePath, () => {});
-      if (!res.headersSent) res.status(500).end();
-    });
-  });
-
-  ytDlp.on("error", (err) => {
-    if (!res.headersSent) res.status(500).json({ error: `Process failed: ${err.message}` });
+  readStream.on("error", () => {
+    fs.unlink(tempFilePath, () => {});
+    if (!res.headersSent) res.status(500).end();
   });
 });
 
