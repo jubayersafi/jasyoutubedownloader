@@ -105,48 +105,28 @@ app.post("/api/formats", async (req, res) => {
   const videoId = bodyVideoId || (typeof url === "string" ? extractYouTubeId(url) : null);
   if (!videoId) return res.status(400).json({ error: "Valid videoId is required." });
 
-  const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const args = ["--dump-json", "--no-playlist"];
-  if (fs.existsSync(cookiePath)) {
-    args.push("--cookies", cookiePath);
-  }
-  args.push(targetUrl);
+  const standardHeights = [1080, 720, 480, 360];
+  const formatsList = standardHeights.map((h) => ({
+    id: `${h}p`,
+    height: h,
+    label: h === 1080 ? "1080p Full HD" : h === 720 ? "720p HD" : h === 480 ? "480p SD" : "360p Fast",
+    ext: "mp4",
+    sizeLabel: "",
+  }));
 
-  const ytDlp = spawn("yt-dlp", args);
-  let dataString = "";
-
-  ytDlp.stdout.on("data", (chunk) => {
-    dataString += chunk;
+  formatsList.push({
+    id: "audio",
+    height: 0,
+    label: "Audio Only (MP3)",
+    ext: "mp3",
+    sizeLabel: "",
   });
 
-  ytDlp.on("close", (code) => {
-    if (code !== 0) {
-      return res.status(403).json({ code: "BOT_CHECK", error: "YouTube bot check or extraction failed." });
-    }
-
-    const standardHeights = [1080, 720, 480, 360];
-    const formatsList = standardHeights.map((h) => ({
-      id: `${h}p`,
-      height: h,
-      label: h === 1080 ? "1080p Full HD" : h === 720 ? "720p HD" : h === 480 ? "480p SD" : "360p Fast",
-      ext: "mp4",
-      sizeLabel: "",
-    }));
-
-    formatsList.push({
-      id: "audio",
-      height: 0,
-      label: "Audio Only (MP3)",
-      ext: "mp3",
-      sizeLabel: "",
-    });
-
-    res.json({ formats: formatsList });
-  });
+  res.json({ formats: formatsList });
 });
 
 app.post("/api/download", async (req, res) => {
-  const { url, videoId: bodyVideoId, quality = "1080p" } = req.body || {};
+  const { url, videoId: bodyVideoId, quality = "720p" } = req.body || {};
   const videoId = bodyVideoId || (typeof url === "string" ? extractYouTubeId(url) : null);
 
   if (!videoId) {
@@ -158,18 +138,24 @@ app.post("/api/download", async (req, res) => {
   const ext = isAudio ? "mp3" : "mp4";
   const tempFilePath = path.join(os.tmpdir(), `jas_${videoId}_${Date.now()}.${ext}`);
 
-  const args = ["--no-playlist"];
+  const args = [
+    "--no-playlist",
+    "--no-check-certificates",
+    "--extractor-args",
+    "youtube:player_client=android,ios,web",
+  ];
+
   if (fs.existsSync(cookiePath)) {
     args.push("--cookies", cookiePath);
   }
 
   if (isAudio) {
-    args.push("-f", "bestaudio", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", tempFilePath);
+    args.push("-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", tempFilePath);
   } else {
     const heightNum = parseInt(quality, 10) || 720;
     args.push(
       "-f",
-      `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]`,
+      `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]/best`,
       "--merge-output-format",
       "mp4",
       "-o",
@@ -180,15 +166,17 @@ app.post("/api/download", async (req, res) => {
   args.push(targetUrl);
 
   const ytDlp = spawn("yt-dlp", args);
+  let stderrLog = "";
 
   ytDlp.stderr.on("data", (err) => {
-    console.error("yt-dlp log:", err.toString());
+    stderrLog += err.toString();
   });
 
   ytDlp.on("close", (code) => {
     if (code !== 0 || !fs.existsSync(tempFilePath)) {
+      console.error("yt-dlp error:", stderrLog);
       if (!res.headersSent) {
-        return res.status(500).json({ error: "Failed to process media file." });
+        return res.status(500).json({ error: "Failed to process media file. Please try again." });
       }
       return;
     }
@@ -219,8 +207,8 @@ app.post("/api/download", async (req, res) => {
     });
   });
 
-  ytDlp.on("error", () => {
-    if (!res.headersSent) res.status(500).json({ error: "Download process failed." });
+  ytDlp.on("error", (err) => {
+    if (!res.headersSent) res.status(500).json({ error: `Process failed: ${err.message}` });
   });
 });
 
