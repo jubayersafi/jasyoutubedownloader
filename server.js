@@ -14,7 +14,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
-// Render কুকিজ ভ্যারিয়েবল থেকে টেম্পোরারি cookies.txt ফাইল তৈরি করা (হেডার এরর এড়াতে)
+// Render কুকিজ ভ্যারিয়েবল থেকে টেম্পোরারি cookies.txt ফাইল তৈরি করা
 let cookiePath = undefined;
 if (process.env.YOUTUBE_COOKIES) {
   try {
@@ -96,9 +96,12 @@ function getEffectiveHeight(f) {
 }
 
 async function resolveVideoStream(videoId, quality, cookie) {
+  // youtubei.js-এর জন্য কুকিজ পাথ বা স্ট্রিং কনফিগারেশন ঠিক করা হয়েছে
+  const ytCookie = cookiePath && fs.existsSync(cookiePath) ? cookiePath : (cookie || process.env.YOUTUBE_COOKIES || undefined);
+  
   const yt = await Innertube.create({
     retrieve_player: true,
-    cookie: cookiePath || cookie || process.env.YOUTUBE_COOKIES || undefined,
+    cookie: ytCookie,
   });
 
   const clientsToTry = ["IOS", "VISIONOS", "ANDROID", "WEB"];
@@ -250,9 +253,10 @@ app.post("/api/formats", async (req, res) => {
   if (!videoId) return res.status(400).json({ error: "Valid videoId is required." });
 
   try {
+    const ytCookie = cookiePath && fs.existsSync(cookiePath) ? cookiePath : (cookie || process.env.YOUTUBE_COOKIES || undefined);
     const yt = await Innertube.create({
       retrieve_player: true,
-      cookie: cookiePath || cookie || process.env.YOUTUBE_COOKIES || undefined,
+      cookie: ytCookie,
     });
 
     let info = null;
