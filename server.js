@@ -4,6 +4,7 @@ import axios from "axios";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,6 +155,8 @@ app.post("/api/download", async (req, res) => {
 
   const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const isAudio = quality === "audio" || quality === "mp3" || quality === "m4a";
+  const ext = isAudio ? "mp3" : "mp4";
+  const tempFilePath = path.join(os.tmpdir(), `jas_${videoId}_${Date.now()}.${ext}`);
 
   const args = ["--no-playlist"];
   if (fs.existsSync(cookiePath)) {
@@ -161,31 +164,63 @@ app.post("/api/download", async (req, res) => {
   }
 
   if (isAudio) {
-    args.push("-f", "bestaudio", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", "-");
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="youtube_audio.mp3"`);
+    args.push("-f", "bestaudio", "-x", "--audio-format", "mp3", "--audio-quality", "192k", "-o", tempFilePath);
   } else {
     const heightNum = parseInt(quality, 10) || 720;
-    args.push("-f", `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]`, "--merge-output-format", "mp4", "-o", "-");
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="youtube_video_${heightNum}p.mp4"`);
+    args.push(
+      "-f",
+      `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]`,
+      "--merge-output-format",
+      "mp4",
+      "-o",
+      tempFilePath
+    );
   }
 
   args.push(targetUrl);
 
   const ytDlp = spawn("yt-dlp", args);
-  ytDlp.stdout.pipe(res);
 
   ytDlp.stderr.on("data", (err) => {
     console.error("yt-dlp log:", err.toString());
   });
 
-  ytDlp.on("error", () => {
-    if (!res.headersSent) res.status(500).json({ error: "Download process failed." });
+  ytDlp.on("close", (code) => {
+    if (code !== 0 || !fs.existsSync(tempFilePath)) {
+      if (!res.headersSent) {
+        return res.status(500).json({ error: "Failed to process media file." });
+      }
+      return;
+    }
+
+    const stat = fs.statSync(tempFilePath);
+    if (stat.size === 0) {
+      fs.unlinkSync(tempFilePath);
+      return res.status(500).json({ error: "Generated file was empty." });
+    }
+
+    res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="youtube_${isAudio ? "audio" : `video_${quality}`}.${ext}"`
+    );
+
+    const readStream = fs.createReadStream(tempFilePath);
+    readStream.pipe(res);
+
+    readStream.on("close", () => {
+      fs.unlink(tempFilePath, () => {});
+    });
+
+    readStream.on("error", () => {
+      fs.unlink(tempFilePath, () => {});
+      if (!res.headersSent) res.status(500).end();
+    });
   });
 
-  req.on("close", () => {
-    ytDlp.kill("SIGKILL");
+  ytDlp.on("error", () => {
+    if (!res.headersSent) res.status(500).json({ error: "Download process failed." });
   });
 });
 
