@@ -5,6 +5,7 @@ import { Innertube } from "youtubei.js";
 import { spawn } from "child_process";
 import { Readable } from "stream";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +13,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+
+// Render কুকিজ ভ্যারিয়েবল থেকে টেম্পোরারি cookies.txt ফাইল তৈরি করা (হেডার এরর এড়াতে)
+let cookiePath = undefined;
+if (process.env.YOUTUBE_COOKIES) {
+  try {
+    cookiePath = path.join(__dirname, "cookies.txt");
+    fs.writeFileSync(cookiePath, process.env.YOUTUBE_COOKIES.trim());
+    console.log("YouTube cookies successfully loaded into cookies.txt");
+  } catch (e) {
+    console.error("Failed to write cookies.txt:", e);
+  }
+}
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
@@ -85,7 +98,7 @@ function getEffectiveHeight(f) {
 async function resolveVideoStream(videoId, quality, cookie) {
   const yt = await Innertube.create({
     retrieve_player: true,
-    cookie: cookie || process.env.YOUTUBE_COOKIES || undefined,
+    cookie: cookiePath || cookie || process.env.YOUTUBE_COOKIES || undefined,
   });
 
   const clientsToTry = ["IOS", "VISIONOS", "ANDROID", "WEB"];
@@ -239,7 +252,7 @@ app.post("/api/formats", async (req, res) => {
   try {
     const yt = await Innertube.create({
       retrieve_player: true,
-      cookie: cookie || process.env.YOUTUBE_COOKIES || undefined,
+      cookie: cookiePath || cookie || process.env.YOUTUBE_COOKIES || undefined,
     });
 
     let info = null;
@@ -438,4 +451,3 @@ app.get("*", (_req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`JAS Web Version running on http://localhost:${PORT}`);
 });
-
