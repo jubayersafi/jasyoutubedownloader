@@ -1,1 +1,493 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f0f0f" />
+    <title>JAS — Web Video & Audio Downloader</title>
+    <script src="/config.js"></script>
+    <style>
+      :root {
+        --bg: #0f0f0f;
+        --surface: #1e1e1e;
+        --border: #333333;
+        --accent: #ff0000;
+        --success: #2ecc71;
+        --text: #ffffff;
+        --dim: #aaaaaa;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .container { max-width: 1040px; width: 100%; margin: 0 auto; padding: 24px 20px; flex: 1; }
+      header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding-bottom: 24px; gap: 12px; flex-wrap: wrap;
+      }
+      .logo { font-size: 24px; font-weight: 900; letter-spacing: -0.04em; display: flex; align-items: center; gap: 8px; }
+      .logo span { color: var(--accent); }
+      .badge {
+        background: rgba(46, 204, 113, 0.14); color: var(--success);
+        font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+        padding: 5px 10px; border-radius: 999px; text-transform: uppercase;
+      }
+      .btn-ghost {
+        background: var(--surface); border: 1px solid var(--border); color: var(--dim);
+        padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer;
+      }
+      .btn-ghost:hover { color: #fff; border-color: #555; }
+      .btn-ghost.active { color: var(--success); border-color: rgba(46,204,113,0.4); background: rgba(46,204,113,0.1); }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 18px; padding: 22px; margin-bottom: 20px;
+      }
+      .card-title {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em;
+        color: var(--dim); font-weight: 700; margin-bottom: 14px;
+      }
+      .search-row { display: flex; gap: 10px; flex-wrap: wrap; }
+      input[type="text"], input[type="url"] {
+        flex: 1; min-width: 220px; background: #2a2a2a; border: 1px solid var(--border);
+        border-radius: 10px; padding: 13px 16px; color: #fff; font-size: 14px; outline: none;
+        width: 100%;
+      }
+      input[type="text"]:focus, input[type="url"]:focus { border-color: rgba(255, 0, 0, 0.65); }
+      .btn-primary {
+        background: var(--accent); color: #fff; border: none; border-radius: 10px;
+        padding: 13px 26px; font-size: 12px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.12em; cursor: pointer;
+      }
+      .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+      .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+      .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+      @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+      .thumb-wrap {
+        position: relative; aspect-ratio: 16/9; border-radius: 12px;
+        overflow: hidden; background: #000; border: 1px solid var(--border); margin-bottom: 14px;
+      }
+      .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
+      .overlay {
+        position: absolute; inset: 0; background: rgba(0,0,0,0.85);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 12px; padding: 20px; text-align: center;
+      }
+      .bar-bg { width: 220px; max-width: 100%; height: 6px; background: rgba(255,255,255,0.15); border-radius: 99px; overflow: hidden; }
+      .bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; }
+      .pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+      .pill {
+        background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--dim);
+        padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer;
+      }
+      .pill:hover { color: #fff; border-color: #666; }
+      .pill.selected { background: rgba(255,0,0,0.18); border-color: var(--accent); color: #fff; }
+      .dl-row { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+      .btn-audio {
+        background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: #fff;
+        border-radius: 10px; padding: 13px 12px; font-size: 11px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer;
+      }
+      .btn-audio:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+      .notice {
+        margin-bottom: 12px; padding: 12px; border-radius: 10px; font-size: 12px; line-height: 1.5;
+        border: 1px solid rgba(255,0,0,0.35); background: rgba(255,0,0,0.1); color: #ffd4d4;
+      }
+      .notice.success {
+        border-color: rgba(46,204,113,0.35); background: rgba(46,204,113,0.12); color: var(--success);
+      }
+      .warn-banner {
+        margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; font-size: 12px;
+        border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.12); color: #fde68a;
+        display: none; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+      }
+      .history-item {
+        display: flex; align-items: center; gap: 10px; padding: 8px;
+        border-radius: 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .history-item:hover { background: rgba(255,255,255,0.05); }
+      .history-item img { width: 72px; height: 42px; object-fit: cover; border-radius: 6px; }
+      .history-meta { min-width: 0; flex: 1; }
+      .history-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .history-sub { font-size: 11px; color: var(--dim); }
+      .modal-bg {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none;
+        align-items: center; justify-content: center; padding: 16px; z-index: 50;
+      }
+      .modal-bg.open { display: flex; }
+      .modal {
+        background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+        padding: 22px; width: 100%; max-width: 460px;
+      }
+      textarea {
+        width: 100%; background: #2a2a2a; border: 1px solid var(--border); border-radius: 10px;
+        padding: 12px; color: #fff; font-size: 12px; margin: 8px 0 14px; outline: none;
+      }
+      .field-label {
+        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+        color: #fff; margin-top: 14px; margin-bottom: 6px; display: block;
+      }
+      footer {
+        max-width: 1040px; width: 100%; margin: 0 auto; padding: 20px;
+        border-top: 1px solid var(--border); display: flex; justify-content: space-between;
+        font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.15em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="logo"><span>▶</span> JAS <span class="badge">Web Edition</span></div>
+        <button id="settings-btn" class="btn-ghost" type="button">Backend &amp; Session</button>
+      </header>
 
+      <div id="netlify-warn" class="warn-banner">
+        <span>Hosted on Netlify? Set your Backend Server URL (Render / Railway) in <strong>Backend &amp; Session</strong> or <code>config.js</code>.</span>
+        <button id="warn-open-settings" class="btn-ghost" type="button">Set Backend URL</button>
+      </div>
+
+      <section class="card">
+        <div class="card-title">Instant Web Downloader (No Extension Required)</div>
+        <form id="fetch-form" class="search-row">
+          <input id="url-input" type="text" placeholder="Paste YouTube video or Shorts URL (e.g. https://youtube.com/watch?v=...)" />
+          <button id="fetch-btn" class="btn-primary" type="submit">Fetch Video</button>
+        </form>
+        <p id="fetch-error" style="color:#ff6b6b;font-size:12px;font-weight:700;margin-top:10px;display:none;"></p>
+      </section>
+
+      <div class="grid">
+        <section class="card" id="result-card">
+          <div class="card-title">Video Ready</div>
+          <div id="empty-state" style="padding:48px 16px;text-align:center;color:var(--dim);font-size:13px;">
+            Paste any YouTube link above to choose 4K, 1080p Full HD, 720p HD, or Audio (MP3).
+          </div>
+          <div id="video-state" style="display:none;">
+            <div class="thumb-wrap">
+              <img id="v-thumb" alt="Thumbnail" referrerpolicy="no-referrer" />
+              <div id="dl-overlay" class="overlay" style="display:none;">
+                <div class="bar-bg"><div id="dl-bar" class="bar-fill"></div></div>
+                <p id="dl-status" style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Preparing...</p>
+              </div>
+            </div>
+            <h3 id="v-title" style="font-size:17px;line-height:1.35;margin-bottom:4px;"></h3>
+            <p id="v-author" style="font-size:12px;color:var(--dim);margin-bottom:14px;"></p>
+
+            <div class="card-title" style="margin-bottom:6px;">Select Video Quality</div>
+            <div id="quality-pills" class="pills"></div>
+            <div id="dl-notice" class="notice" style="display:none;"></div>
+
+            <div class="dl-row">
+              <button id="dl-video-btn" class="btn-primary" type="button">Download 1080p Full HD</button>
+              <button id="dl-audio-btn" class="btn-audio" type="button">Audio (MP3)</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div class="card-title" style="margin-bottom:0;">Recent Library</div>
+            <button id="clear-history" class="btn-ghost" type="button" style="padding:4px 8px;font-size:10px;">Clear</button>
+          </div>
+          <div id="history-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal-bg">
+      <div class="modal">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h4 style="font-size:13px;text-transform:uppercase;letter-spacing:0.12em;">Backend &amp; Session Settings</h4>
+          <button id="close-modal" class="btn-ghost" type="button" style="padding:4px 8px;">✕</button>
+        </div>
+
+        <label class="field-label" for="backend-input">Backend Server URL (Netlify Split Mode)</label>
+        <input id="backend-input" type="url" placeholder="https://your-jas-backend.onrender.com (leave empty for same server)" />
+        <p id="backend-test-msg" style="font-size:11px;color:var(--dim);margin-top:6px;min-height:16px;"></p>
+
+        <label class="field-label" for="cookie-input">YouTube Session Cookies (Optional)</label>
+        <textarea id="cookie-input" rows="3" placeholder="SID=...; HSID=...; SSID=...; SAPISID=..."></textarea>
+
+        <div style="display:flex;gap:8px;">
+          <button id="test-backend" class="btn-ghost" type="button" style="flex:1;">Test Backend</button>
+          <button id="save-settings" class="btn-primary" type="button" style="flex:2;">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <span>© 2026 JAS Web Edition</span>
+      <span>4K • 1080p HD • MP3</span>
+    </footer>
+
+    <script>
+      const COOKIE_KEY = "jas_web_cookies";
+      const BACKEND_KEY = "jas_backend_url";
+      const HISTORY_KEY = "jas_web_history";
+      const DEFAULT_FORMATS = [
+        { id: "1080p", height: 1080, label: "1080p Full HD", ext: "mp4" },
+        { id: "720p", height: 720, label: "720p HD", ext: "mp4" },
+        { id: "480p", height: 480, label: "480p SD", ext: "mp4" },
+        { id: "360p", height: 360, label: "360p Fast", ext: "mp4" },
+      ];
+
+      let currentVideo = null;
+      let formats = [...DEFAULT_FORMATS];
+      let selectedQuality = "1080p";
+      let ytCookies = localStorage.getItem(COOKIE_KEY) || "";
+
+      function getBackendBase() {
+        const stored = (localStorage.getItem(BACKEND_KEY) || "").trim();
+        const globalCfg = (window.JAS_BACKEND_URL || "").trim();
+        const chosen = stored || globalCfg;
+        return chosen ? chosen.replace(/\/+$/, "") : "";
+      }
+
+      function apiUrl(path) {
+        return `${getBackendBase()}${path}`;
+      }
+
+      const el = (id) => document.getElementById(id);
+
+      function refreshConnectionUI() {
+        const base = getBackendBase();
+        const btn = el("settings-btn");
+        btn.className = (base || ytCookies) ? "btn-ghost active" : "btn-ghost";
+        btn.textContent = base ? "Backend Connected" : ytCookies ? "Session Active" : "Backend & Session";
+
+        const isNetlify = location.hostname.endsWith("netlify.app");
+        el("netlify-warn").style.display = isNetlify && !base ? "flex" : "none";
+      }
+      refreshConnectionUI();
+
+      const sanitize = (s) => (s || "jas_video").replace(/[<>:"/\\|?*\x00-\x1F]/g, "").trim().slice(0, 120) || "jas_video";
+
+      function renderHistory() {
+        let items = [];
+        try { items = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch {}
+        const list = el("history-list");
+        if (!items.length) {
+          list.innerHTML = '<p style="font-size:12px;color:var(--dim);">No recent videos yet.</p>';
+          return;
+        }
+        list.innerHTML = "";
+        items.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "history-item";
+          row.innerHTML = `<img src="${item.thumbnail}" referrerpolicy="no-referrer" /><div class="history-meta"><div class="history-title"></div><div class="history-sub"></div></div>`;
+          row.querySelector(".history-title").textContent = item.title;
+          row.querySelector(".history-sub").textContent = `${item.author} • ${item.format || "Ready"}`;
+          row.onclick = () => { el("url-input").value = item.url; fetchVideo(item.url); };
+          list.appendChild(row);
+        });
+      }
+      renderHistory();
+
+      function saveHistory(info, format) {
+        let items = [];
+        try { items = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch {}
+        items = [{ ...info, format }, ...items.filter((i) => i.videoId !== info.videoId)].slice(0, 8);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+        renderHistory();
+      }
+
+      function renderFormats() {
+        const box = el("quality-pills");
+        box.innerHTML = "";
+        const videoOnly = formats.filter((f) => f.height > 0);
+        const audioObj = formats.find((f) => f.id === "audio");
+        el("dl-audio-btn").textContent = audioObj?.sizeLabel ? `Audio MP3 (${audioObj.sizeLabel})` : "Audio (MP3)";
+
+        videoOnly.forEach((fmt) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = fmt.id === selectedQuality ? "pill selected" : "pill";
+          b.textContent = fmt.sizeLabel ? `${fmt.label} (${fmt.sizeLabel})` : fmt.label;
+          b.onclick = () => { selectedQuality = fmt.id; renderFormats(); };
+          box.appendChild(b);
+        });
+        const chosen = videoOnly.find((f) => f.id === selectedQuality) || videoOnly[0];
+        if (chosen) {
+          selectedQuality = chosen.id;
+          el("dl-video-btn").textContent = `Download ${chosen.label}`;
+        }
+      }
+
+      async function parseJsonSafe(res) {
+        const text = await res.text();
+        try { return JSON.parse(text); } catch {
+          throw new Error("Backend API unreachable. Check your Backend Server URL in Backend & Session settings.");
+        }
+      }
+
+      async function fetchVideo(targetUrl) {
+        el("fetch-error").style.display = "none";
+        el("fetch-btn").disabled = true;
+        el("fetch-btn").textContent = "Fetching...";
+        el("dl-notice").style.display = "none";
+        try {
+          const res = await fetch(apiUrl("/api/video-info"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: targetUrl }),
+          });
+          const data = await parseJsonSafe(res);
+          if (!res.ok) throw new Error(data.error || "Failed to fetch video info");
+
+          currentVideo = data;
+          el("empty-state").style.display = "none";
+          el("video-state").style.display = "block";
+          el("v-thumb").src = data.thumbnail;
+          el("v-title").textContent = data.title;
+          el("v-author").textContent = data.author;
+          formats = [...DEFAULT_FORMATS];
+          selectedQuality = "1080p";
+          renderFormats();
+          saveHistory(data);
+
+          const fRes = await fetch(apiUrl("/api/formats"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId: data.videoId, cookie: ytCookies || undefined }),
+          });
+          if (fRes.ok) {
+            const fData = await parseJsonSafe(fRes);
+            if (Array.isArray(fData.formats) && fData.formats.length) {
+              formats = fData.formats;
+              const pref = formats.find((f) => f.id === "1080p") || formats.find((f) => f.id === "720p") || formats[0];
+              if (pref && pref.height > 0) selectedQuality = pref.id;
+              renderFormats();
+            }
+          }
+        } catch (err) {
+          el("fetch-error").textContent = err.message;
+          el("fetch-error").style.display = "block";
+        } finally {
+          el("fetch-btn").disabled = false;
+          el("fetch-btn").textContent = "Fetch Video";
+        }
+      }
+
+      async function startDownload(qualityId) {
+        if (!currentVideo) return;
+        el("dl-notice").style.display = "none";
+        el("dl-overlay").style.display = "flex";
+        el("dl-bar").style.width = "10%";
+        el("dl-status").textContent = `Preparing ${qualityId}...`;
+        el("dl-video-btn").disabled = true;
+        el("dl-audio-btn").disabled = true;
+
+        try {
+          const res = await fetch(apiUrl("/api/download"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId: currentVideo.videoId, quality: qualityId, cookie: ytCookies || undefined }),
+          });
+          if (!res.ok) {
+            const err = await parseJsonSafe(res).catch((e) => ({ error: e.message }));
+            throw new Error(err.error || "Download failed");
+          }
+
+          const total = Number(res.headers.get("content-length") || 0);
+          const reader = res.body.getReader();
+          const chunks = [];
+          let received = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              received += value.length;
+              const pct = total > 0 ? Math.min(99, Math.round((received / total) * 100)) : Math.min(92, 15 + Math.round(received / 400000));
+              el("dl-bar").style.width = pct + "%";
+              el("dl-status").textContent = `Downloading ${(received / 1024 / 1024).toFixed(1)} MB...`;
+            }
+          }
+
+          const isAudio = qualityId === "audio" || qualityId === "mp3";
+          const chosenFmt = formats.find((f) => f.id === qualityId);
+          const ext = isAudio ? "mp3" : chosenFmt?.ext || "mp4";
+          const mime = isAudio ? "audio/mpeg" : ext === "webm" ? "video/webm" : "video/mp4";
+          const blobUrl = URL.createObjectURL(new Blob(chunks, { type: mime }));
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = isAudio ? `${sanitize(currentVideo.title)}.mp3` : `${sanitize(currentVideo.title)} (${qualityId}).${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+          el("dl-bar").style.width = "100%";
+          el("dl-notice").className = "notice success";
+          el("dl-notice").textContent = `Downloaded: ${a.download}`;
+          el("dl-notice").style.display = "block";
+          saveHistory(currentVideo, chosenFmt?.label || qualityId);
+        } catch (err) {
+          el("dl-notice").className = "notice";
+          el("dl-notice").textContent = err.message;
+          el("dl-notice").style.display = "block";
+        } finally {
+          el("dl-overlay").style.display = "none";
+          el("dl-video-btn").disabled = false;
+          el("dl-audio-btn").disabled = false;
+        }
+      }
+
+      function openSettings() {
+        el("backend-input").value = getBackendBase();
+        el("cookie-input").value = ytCookies;
+        el("backend-test-msg").textContent = "";
+        el("settings-modal").classList.add("open");
+      }
+
+      el("fetch-form").onsubmit = (e) => {
+        e.preventDefault();
+        const val = el("url-input").value.trim();
+        if (val) fetchVideo(val);
+      };
+      el("dl-video-btn").onclick = () => startDownload(selectedQuality);
+      el("dl-audio-btn").onclick = () => startDownload("audio");
+      el("clear-history").onclick = () => { localStorage.removeItem(HISTORY_KEY); renderHistory(); };
+      el("settings-btn").onclick = openSettings;
+      el("warn-open-settings").onclick = openSettings;
+      el("close-modal").onclick = () => el("settings-modal").classList.remove("open");
+
+      el("test-backend").onclick = async () => {
+        const raw = el("backend-input").value.trim().replace(/\/+$/, "");
+        const msg = el("backend-test-msg");
+        msg.style.color = "#aaaaaa";
+        msg.textContent = "Testing connection...";
+        try {
+          const res = await fetch(`${raw}/health`);
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            msg.style.color = "#2ecc71";
+            msg.textContent = "Connected to JAS Backend successfully!";
+          } else {
+            throw new Error("Unexpected response");
+          }
+        } catch {
+          msg.style.color = "#ff6b6b";
+          msg.textContent = "Could not reach /health on that URL.";
+        }
+      };
+
+      el("save-settings").onclick = () => {
+        const backendVal = el("backend-input").value.trim().replace(/\/+$/, "");
+        if (backendVal) localStorage.setItem(BACKEND_KEY, backendVal);
+        else localStorage.removeItem(BACKEND_KEY);
+
+        ytCookies = el("cookie-input").value.trim();
+        if (ytCookies) localStorage.setItem(COOKIE_KEY, ytCookies);
+        else localStorage.removeItem(COOKIE_KEY);
+
+        refreshConnectionUI();
+        el("settings-modal").classList.remove("open");
+      };
+    </script>
+  </body>
+</html>
